@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Subject {
+  id        String    @id @default(cuid())
+  name      String
+  color     String
+  examDate  DateTime?
+  examBoard String?
+  createdAt DateTime  @default(now())
+
+  topics    Topic[]
+  sessions  Session[]
+  mockTests MockTest[]
+}
+
+model Topic {
+  id        String  @id @default(cuid())
+  name      String
+  completed Boolean @default(false)
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  subjectId   String
+  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  date        DateTime
+  durationMin Int
+  notes       String?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model MockTest {
+  id        String   @id @default(cuid())
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  date      DateTime
+  score     Float?
+  maxScore  Float?
+  notes     String?
+  createdAt DateTime @default(now())
+}

@@ -1,65 +1,135 @@
-import Image from "next/image";
+import { prisma } from '@/lib/prisma'
+import { differenceInDays, format, isToday, isFuture } from 'date-fns'
+import Link from 'next/link'
 
-export default function Home() {
+export const dynamic = 'force-dynamic'
+
+export default async function DashboardPage() {
+  const subjects = await prisma.subject.findMany({
+    include: { topics: true, sessions: true, mockTests: true },
+    orderBy: { name: 'asc' },
+  })
+
+  const today = new Date()
+  const upcomingExams = subjects
+    .filter((s) => s.examDate && isFuture(s.examDate))
+    .sort((a, b) => a.examDate!.getTime() - b.examDate!.getTime())
+
+  const todaySessions = subjects.flatMap((s) =>
+    s.sessions
+      .filter((sess) => isToday(new Date(sess.date)))
+      .map((sess) => ({ ...sess, subjectName: s.name, color: s.color })),
+  )
+
+  const totalTopics = subjects.reduce((acc, s) => acc + s.topics.length, 0)
+  const completedTopics = subjects.reduce((acc, s) => acc + s.topics.filter((t) => t.completed).length, 0)
+  const totalSessions = subjects.reduce((acc, s) => acc + s.sessions.length, 0)
+  const completedSessions = subjects.reduce((acc, s) => acc + s.sessions.filter((sess) => sess.completed).length, 0)
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div>
+      <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.25rem' }}>Dashboard</h2>
+      <p style={{ color: '#64748b', marginBottom: '2rem', fontSize: '0.875rem' }}>
+        {format(today, 'EEEE, MMMM d yyyy')}
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <StatCard label="Topics Covered" value={`${completedTopics} / ${totalTopics}`} color="#3b82f6" />
+        <StatCard label="Sessions Done" value={`${completedSessions} / ${totalSessions}`} color="#10b981" />
+        <StatCard label="Exams Upcoming" value={upcomingExams.length.toString()} color="#f59e0b" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+        <Card title="Upcoming Exams">
+          {upcomingExams.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+              No exam dates set.{' '}
+              <Link href="/subjects" style={{ color: '#3b82f6' }}>Add them →</Link>
+            </p>
+          ) : (
+            upcomingExams.map((s) => {
+              const days = differenceInDays(s.examDate!, today)
+              return (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid #1e293b' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: s.color, display: 'inline-block', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.875rem' }}>{s.name}</span>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{format(s.examDate!, 'dd MMM')}</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: days <= 7 ? '#ef4444' : days <= 14 ? '#f59e0b' : '#10b981' }}>
+                      {days === 0 ? 'TODAY' : `${days}d`}
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </Card>
+
+        <Card title="Today's Sessions">
+          {todaySessions.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+              No sessions today.{' '}
+              <Link href="/sessions" style={{ color: '#3b82f6' }}>Schedule one →</Link>
+            </p>
+          ) : (
+            todaySessions.map((sess) => (
+              <div key={sess.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid #1e293b' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: sess.color, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '0.875rem' }}>{sess.subjectName}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{sess.durationMin} min{sess.notes ? ` · ${sess.notes}` : ''}</div>
+                </div>
+                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: sess.completed ? '#10b981' : '#64748b', flexShrink: 0 }}>
+                  {sess.completed ? '✓ Done' : 'Pending'}
+                </span>
+              </div>
+            ))
+          )}
+        </Card>
+
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Card title="Subject Progress">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+              {subjects.map((s) => {
+                const pct = s.topics.length ? Math.round((s.topics.filter((t) => t.completed).length / s.topics.length) * 100) : 0
+                return (
+                  <Link key={s.id} href={`/subjects/${s.id}`} style={{ textDecoration: 'none' }}>
+                    <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: '#111827' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#f1f5f9' }}>{s.name}</span>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{pct}%</span>
+                      </div>
+                      <div style={{ height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: s.color, borderRadius: 3 }} />
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </Card>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
-  );
+  )
+}
+
+function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ padding: '1rem 1.25rem', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '0.75rem' }}>
+      <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' }}>{label}</div>
+      <div style={{ fontSize: '1.5rem', fontWeight: 700, color }}>{value}</div>
+    </div>
+  )
+}
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '1.25rem', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '0.75rem' }}>
+      <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</h3>
+      {children}
+    </div>
+  )
 }
